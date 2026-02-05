@@ -1,0 +1,31 @@
+{
+  "name": "duro",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@base-ui-components/react": "^1.0.0-alpha.9",
+    "@react-router/node": "^7.1.0",
+    "@react-router/serve": "^7.1.0",
+    "isbot": "^5.1.17",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.1.0"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
