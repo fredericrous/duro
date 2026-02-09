@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
 import { parseAuthHeaders } from "~/lib/auth.server";
-import { getUserTier, getVisibleApps } from "~/lib/apps";
+import { getVisibleApps } from "~/lib/apps";
 import { AppGrid } from "~/components/AppGrid/AppGrid";
 import { NoAccess } from "~/components/NoAccess/NoAccess";
 
@@ -13,8 +13,7 @@ export function meta({}: Route.MetaArgs) {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const auth = parseAuthHeaders(request);
-  const userTier = getUserTier(auth.groups);
-  const visibleApps = getVisibleApps(userTier);
+  const visibleApps = getVisibleApps(auth.groups);
 
   return {
     user: auth.user,

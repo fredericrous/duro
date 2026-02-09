@@ -10,7 +10,7 @@ export function AppCard({ app }: AppCardProps) {
   return (
     <a href={app.url} className={styles.card} target="_blank" rel="noopener noreferrer">
       <div className={styles.icon}>
-        <Icon name={app.icon} size={32} />
+        <Icon svg={app.icon} size={32} />
       </div>
       <span className={styles.name}>{app.name}</span>
     </a>
