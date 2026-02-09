@@ -113,6 +113,13 @@ export function Icon({ name, size = 24, className }: IconProps) {
         <path d="M21 21v-2a3 3 0 0 0-3-3h-1" stroke="currentColor" strokeWidth="2" fill="none" />
       </svg>
     ),
+    flux: (
+      <svg viewBox="0 0 24 24" fill="currentColor" width={size} height={size} className={className}>
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M8 12h8M15 9l3 3-3 3" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M8 8l-2 4 2 4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
     dns: (
       <svg viewBox="0 0 24 24" fill="currentColor" width={size} height={size} className={className}>
         <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />

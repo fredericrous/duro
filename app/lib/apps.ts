@@ -53,6 +53,7 @@ export const apps: AppDefinition[] = [
   // Admin (tier 3 - admin)
   { id: "lldap", name: "LLDAP", url: "https://lldap.daddyshome.fr", category: "admin", minTier: 3, icon: "users" },
   { id: "ddns-updater", name: "DDNS Updater", url: "https://ddns-updater.daddyshome.fr", category: "admin", minTier: 3, icon: "dns" },
+  { id: "flux", name: "Flux", url: "https://flux.daddyshome.fr", category: "admin", minTier: 3, icon: "flux" },
 ];
 
 export function getVisibleApps(userTier: number): AppDefinition[] {
