@@ -23,16 +23,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux \
     go build -a -trimpath -ldflags="-w -s" -o manager main.go
 
-# Runtime stage - use scratch for smallest possible image
-FROM scratch
+# Runtime stage
+FROM alpine:3.21
 
-# Copy SSL certificates from builder
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+RUN apk add --no-cache ca-certificates wget
 
-# Copy binary
 COPY --from=builder /workspace/manager /manager
 
-# Create nonroot user manually (scratch doesn't have users)
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]
