@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
 import { parseAuthHeaders } from "~/lib/auth.server";
-import { getVisibleApps } from "~/lib/apps";
+import { getVisibleApps } from "~/lib/apps.server";
 import { AppGrid } from "~/components/AppGrid/AppGrid";
 import { NoAccess } from "~/components/NoAccess/NoAccess";
 
