@@ -185,7 +185,7 @@ export const queueInvite = (input: InviteInput) =>
       success: true as const,
       message: `Invite queued for ${input.email}`,
     }
-  })
+  }).pipe(Effect.withSpan("queueInvite", { attributes: { email: input.email } }))
 
 // --- Accept Invite (unchanged) ---
 
@@ -232,4 +232,4 @@ export const acceptInvite = (token: string, input: AcceptInput) =>
     yield* inviteRepo.markUsedBy(invite.id, input.username)
 
     return { success: true as const }
-  })
+  }).pipe(Effect.withSpan("acceptInvite", { attributes: { username: input.username } }))

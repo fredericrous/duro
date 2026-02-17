@@ -7,9 +7,11 @@ import { EmailServiceLive } from "./EmailService.server"
 import { InviteRepoLive } from "./InviteRepo.server"
 import { EventBrokerLive } from "./EventBroker.server"
 import { InviteWorkflowLayer } from "~/lib/workflows/invite.server"
+import { OtelLayer } from "~/lib/telemetry.server"
 
-// InviteWorkflowLayer is a side-effect layer (registers workflow with engine).
-// provideMerge feeds the services+engine output into InviteWorkflowLayer's
+// OtelLayer installs the OTLP tracer underneath everything.
+// InviteWorkflowLayer registers the workflow with the engine (side-effect).
+// provideMerge feeds services+engine output into InviteWorkflowLayer's
 // requirements, and merges their output into the result.
 export const AppLayer = InviteWorkflowLayer.pipe(
   Layer.provideMerge(
@@ -23,4 +25,5 @@ export const AppLayer = InviteWorkflowLayer.pipe(
       WorkflowEngine.layerMemory,
     ),
   ),
+  Layer.provide(OtelLayer),
 )
