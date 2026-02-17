@@ -6,4 +6,5 @@ export default [
   route("users", "routes/users.tsx"),
   route("invite/:token", "routes/invite.tsx"),
   route("welcome", "routes/welcome.tsx"),
+  route("api/process-invite", "routes/api.process-invite.ts"),
 ] satisfies RouteConfig;

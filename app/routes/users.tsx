@@ -1,11 +1,11 @@
 import { useEffect, useRef } from "react"
-import { useFetcher } from "react-router"
+import { useFetcher, useRevalidator } from "react-router"
 import type { Route } from "./+types/users"
 import { parseAuthHeaders } from "~/lib/auth.server"
 import { runEffect } from "~/lib/runtime.server"
 import { LldapClient } from "~/lib/services/LldapClient.server"
 import { InviteRepo, type Invite } from "~/lib/services/InviteRepo.server"
-import { sendInvite } from "~/lib/workflows/invite.server"
+import { queueInvite } from "~/lib/workflows/invite.server"
 import { Effect } from "effect"
 
 export function meta() {
@@ -78,7 +78,7 @@ export async function action({ request }: Route.ActionArgs) {
     const inviteId = formData.get("inviteId") as string
     if (!inviteId) return { error: "Missing invite ID" }
     try {
-      // Revoke old invite, then send a new one with same email/groups
+      // Revoke old invite, then queue a new one with same email/groups
       const invite = await runEffect(
         Effect.gen(function* () {
           const repo = yield* InviteRepo
@@ -91,7 +91,7 @@ export async function action({ request }: Route.ActionArgs) {
       if (!invite) return { error: "Invite not found" }
 
       const result = await runEffect(
-        sendInvite({
+        queueInvite({
           email: invite.email,
           groups: JSON.parse(invite.groups) as number[],
           groupNames: JSON.parse(invite.groupNames) as string[],
@@ -127,7 +127,7 @@ export async function action({ request }: Route.ActionArgs) {
     })
 
     const result = await runEffect(
-      sendInvite({
+      queueInvite({
         email,
         groups: groupIds,
         groupNames,
@@ -142,17 +142,75 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
+function parseStepState(invite: Invite): {
+  certIssued: boolean
+  prCreated: boolean
+  emailSent: boolean
+} {
+  try {
+    const state = JSON.parse(invite.stepState || "{}")
+    return {
+      certIssued: !!state.certIssued,
+      prCreated: !!state.prCreated,
+      emailSent: !!state.emailSent,
+    }
+  } catch {
+    return { certIssued: false, prCreated: false, emailSent: false }
+  }
+}
+
+function isFullyProcessed(invite: Invite): boolean {
+  const state = parseStepState(invite)
+  return state.certIssued && state.emailSent
+}
+
+function StepBadges({ invite }: { invite: Invite }) {
+  const state = parseStepState(invite)
+  const anyStarted = state.certIssued || state.prCreated || state.emailSent
+  const allDone = state.certIssued && state.emailSent
+
+  if (allDone) {
+    return <span className="badge badge-success">Sent</span>
+  }
+  if (!anyStarted) {
+    return <span className="badge badge-pending">Queued</span>
+  }
+  return (
+    <span className="badge-group">
+      {state.certIssued && <span className="badge badge-done">Cert</span>}
+      {state.prCreated && <span className="badge badge-done">PR</span>}
+      {state.emailSent && <span className="badge badge-done">Email</span>}
+      <span className="badge badge-progress">Processing...</span>
+    </span>
+  )
+}
+
 export default function UsersPage({ loaderData }: Route.ComponentProps) {
   const { user, users, groups, pendingInvites } = loaderData
   const fetcher = useFetcher<typeof action>()
   const formRef = useRef<HTMLFormElement>(null)
   const isSubmitting = fetcher.state !== "idle"
+  const revalidator = useRevalidator()
 
   useEffect(() => {
     if (fetcher.data && "success" in fetcher.data && fetcher.data.success) {
       formRef.current?.reset()
     }
   }, [fetcher.data])
+
+  // Auto-refresh while invites are still processing
+  useEffect(() => {
+    const hasIncomplete = pendingInvites.some((inv) => !isFullyProcessed(inv))
+    if (!hasIncomplete) return
+
+    const interval = setInterval(() => {
+      if (revalidator.state === "idle") {
+        revalidator.revalidate()
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [pendingInvites, revalidator])
 
   return (
     <main className="page">
@@ -224,6 +282,7 @@ export default function UsersPage({ loaderData }: Route.ComponentProps) {
                 <tr>
                   <th>Email</th>
                   <th>Groups</th>
+                  <th>Status</th>
                   <th>Invited By</th>
                   <th>Expires</th>
                   <th>Actions</th>
@@ -299,6 +358,12 @@ export default function UsersPage({ loaderData }: Route.ComponentProps) {
         .btn-ghost { padding: 0.25rem 0.625rem; font-size: 0.75rem; background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; transition: all 150ms; }
         .btn-ghost:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text-muted); }
         .btn-ghost.danger:hover:not(:disabled) { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
+        .badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; }
+        .badge-success { background: rgba(34,197,94,0.15); color: #86efac; }
+        .badge-pending { background: rgba(234,179,8,0.15); color: #fde047; }
+        .badge-done { background: rgba(34,197,94,0.15); color: #86efac; }
+        .badge-progress { background: rgba(59,130,246,0.15); color: #93c5fd; }
+        .badge-group { display: inline-flex; gap: 0.25rem; align-items: center; }
       `}</style>
     </main>
   )
@@ -314,6 +379,7 @@ function PendingInviteRow({ invite }: { invite: Invite }) {
     <tr>
       <td>{invite.email}</td>
       <td>{JSON.parse(invite.groupNames).join(", ")}</td>
+      <td><StepBadges invite={invite} /></td>
       <td>{invite.invitedBy}</td>
       <td>{new Date(invite.expiresAt + "Z").toLocaleDateString()}</td>
       <td>
