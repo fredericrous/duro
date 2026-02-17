@@ -27,34 +27,42 @@ export const sendInvite = (input: InviteInput) =>
     // Step 1: Create invite record
     const invite = yield* inviteRepo.create(input)
 
-    // Step 2: Issue cert + P12 with random password
-    const { p12Buffer } = yield* vault.issueCertAndP12(
-      input.email,
-      invite.id,
-    )
+    // Steps 2-4: Issue cert, create PR, send email
+    // If any critical step fails, delete the orphaned invite
+    yield* Effect.gen(function* () {
+      // Step 2: Issue cert + P12 with random password
+      const { p12Buffer } = yield* vault.issueCertAndP12(
+        input.email,
+        invite.id,
+      )
 
-    yield* inviteRepo.updateStepState(invite.id, { certIssued: true })
+      yield* inviteRepo.updateStepState(invite.id, { certIssued: true })
 
-    // Step 3: Create GitHub PR for cert-manager Certificate (non-critical)
-    const username = input.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "")
-    yield* github.createCertPR(invite.id, input.email, username).pipe(
-      Effect.tap(() =>
-        inviteRepo.updateStepState(invite.id, { prCreated: true }),
+      // Step 3: Create GitHub PR for cert-manager Certificate (non-critical)
+      const username = input.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "")
+      yield* github.createCertPR(invite.id, input.email, username).pipe(
+        Effect.tap(() =>
+          inviteRepo.updateStepState(invite.id, { prCreated: true }),
+        ),
+        Effect.catchAll((e) =>
+          Effect.logWarning("GitHub PR creation failed (non-critical)", e),
+        ),
+      )
+
+      // Step 4: Send email with P12 attachment
+      yield* email.sendInviteEmail(
+        input.email,
+        invite.token,
+        input.invitedBy,
+        p12Buffer,
+      )
+
+      yield* inviteRepo.updateStepState(invite.id, { emailSent: true })
+    }).pipe(
+      Effect.tapError(() =>
+        inviteRepo.deleteById(invite.id).pipe(Effect.ignore),
       ),
-      Effect.catchAll((e) =>
-        Effect.logWarning("GitHub PR creation failed (non-critical)", e),
-      ),
     )
-
-    // Step 4: Send email with P12 attachment
-    yield* email.sendInviteEmail(
-      input.email,
-      invite.token,
-      input.invitedBy,
-      p12Buffer,
-    )
-
-    yield* inviteRepo.updateStepState(invite.id, { emailSent: true })
 
     return { success: true as const, message: `Invite sent to ${input.email}` }
   })

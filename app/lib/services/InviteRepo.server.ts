@@ -51,6 +51,7 @@ export class InviteRepo extends Context.Tag("InviteRepo")<
       patch: Record<string, boolean>,
     ) => Effect.Effect<void, InviteError>
     readonly revoke: (id: string) => Effect.Effect<void, InviteError>
+    readonly deleteById: (id: string) => Effect.Effect<void, InviteError>
     readonly findById: (id: string) => Effect.Effect<Invite | null, InviteError>
   }
 >() {}
@@ -120,6 +121,7 @@ export const InviteRepoLive = Layer.effect(
         UPDATE invites SET used_at = datetime('now'), used_by = '__revoked__'
         WHERE id = ? AND used_at IS NULL
       `),
+      deleteById: db.prepare(`DELETE FROM invites WHERE id = ?`),
       findById: db.prepare(`SELECT * FROM invites WHERE id = ?`),
     }
 
@@ -336,6 +338,18 @@ export const InviteRepoLive = Layer.effect(
               cause: e,
             })
           },
+        }),
+
+      deleteById: (id) =>
+        Effect.try({
+          try: () => {
+            stmts.deleteById.run(id)
+          },
+          catch: (e) =>
+            new InviteError({
+              message: "Failed to delete invite",
+              cause: e,
+            }),
         }),
 
       findById: (id) =>
