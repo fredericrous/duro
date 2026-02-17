@@ -50,6 +50,8 @@ export class InviteRepo extends Context.Tag("InviteRepo")<
       id: string,
       patch: Record<string, boolean>,
     ) => Effect.Effect<void, InviteError>
+    readonly revoke: (id: string) => Effect.Effect<void, InviteError>
+    readonly findById: (id: string) => Effect.Effect<Invite | null, InviteError>
   }
 >() {}
 
@@ -114,6 +116,11 @@ export const InviteRepoLive = Layer.effect(
       findPendingByEmail: db.prepare(`
         SELECT * FROM invites WHERE email = ? AND used_at IS NULL AND expires_at > datetime('now')
       `),
+      revoke: db.prepare(`
+        UPDATE invites SET used_at = datetime('now'), used_by = '__revoked__'
+        WHERE id = ? AND used_at IS NULL
+      `),
+      findById: db.prepare(`SELECT * FROM invites WHERE id = ?`),
     }
 
     return {
@@ -308,6 +315,55 @@ export const InviteRepoLive = Layer.effect(
           catch: (e) =>
             new InviteError({
               message: "Failed to update step state",
+              cause: e,
+            }),
+        }),
+
+      revoke: (id) =>
+        Effect.try({
+          try: () => {
+            const result = stmts.revoke.run(id)
+            if (result.changes === 0) {
+              throw new InviteError({
+                message: "Invite not found or already used",
+              })
+            }
+          },
+          catch: (e) => {
+            if (e instanceof InviteError) return e
+            return new InviteError({
+              message: "Failed to revoke invite",
+              cause: e,
+            })
+          },
+        }),
+
+      findById: (id) =>
+        Effect.try({
+          try: () => {
+            const row = stmts.findById.get(id) as
+              | Record<string, unknown>
+              | undefined
+            if (!row) return null
+            return {
+              id: row.id as string,
+              tokenHash: row.token_hash as string,
+              email: row.email as string,
+              groups: row.groups as string,
+              groupNames: row.group_names as string,
+              invitedBy: row.invited_by as string,
+              createdAt: row.created_at as string,
+              expiresAt: row.expires_at as string,
+              usedAt: row.used_at as string | null,
+              usedBy: row.used_by as string | null,
+              stepState: row.step_state as string,
+              attempts: row.attempts as number,
+              lastAttemptAt: row.last_attempt_at as string | null,
+            } satisfies Invite
+          },
+          catch: (e) =>
+            new InviteError({
+              message: "Failed to find invite",
               cause: e,
             }),
         }),

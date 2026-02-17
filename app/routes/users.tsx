@@ -4,7 +4,7 @@ import type { Route } from "./+types/users"
 import { parseAuthHeaders } from "~/lib/auth.server"
 import { runEffect } from "~/lib/runtime.server"
 import { LldapClient } from "~/lib/services/LldapClient.server"
-import { InviteRepo } from "~/lib/services/InviteRepo.server"
+import { InviteRepo, type Invite } from "~/lib/services/InviteRepo.server"
 import { sendInvite } from "~/lib/workflows/invite.server"
 import { Effect } from "effect"
 
@@ -55,6 +55,57 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData()
+  const intent = formData.get("intent") as string
+
+  if (intent === "revoke") {
+    const inviteId = formData.get("inviteId") as string
+    if (!inviteId) return { error: "Missing invite ID" }
+    try {
+      await runEffect(
+        Effect.gen(function* () {
+          const repo = yield* InviteRepo
+          yield* repo.revoke(inviteId)
+        }),
+      )
+      return { success: true, message: "Invite revoked" }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to revoke invite"
+      return { error: message }
+    }
+  }
+
+  if (intent === "resend") {
+    const inviteId = formData.get("inviteId") as string
+    if (!inviteId) return { error: "Missing invite ID" }
+    try {
+      // Revoke old invite, then send a new one with same email/groups
+      const invite = await runEffect(
+        Effect.gen(function* () {
+          const repo = yield* InviteRepo
+          const inv = yield* repo.findById(inviteId)
+          if (!inv) return null
+          yield* repo.revoke(inviteId)
+          return inv
+        }),
+      )
+      if (!invite) return { error: "Invite not found" }
+
+      const result = await runEffect(
+        sendInvite({
+          email: invite.email,
+          groups: JSON.parse(invite.groups) as number[],
+          groupNames: JSON.parse(invite.groupNames) as string[],
+          invitedBy: auth.user ?? "admin",
+        }),
+      )
+      return result
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to resend invite"
+      return { error: message }
+    }
+  }
+
+  // Default: send new invite
   const email = formData.get("email") as string
   const selectedGroups = formData.getAll("groups") as string[]
 
@@ -162,9 +213,11 @@ export default function UsersPage({ loaderData }: Route.ComponentProps) {
       </section>
 
       {/* Pending Invites */}
-      {pendingInvites.length > 0 && (
-        <section className="card">
-          <h2 className="card-title">Pending Invites</h2>
+      <section className="card">
+        <h2 className="card-title">Pending Invites ({pendingInvites.length})</h2>
+        {pendingInvites.length === 0 ? (
+          <p className="empty-state">No pending invites</p>
+        ) : (
           <div className="table-container">
             <table className="table">
               <thead>
@@ -173,22 +226,18 @@ export default function UsersPage({ loaderData }: Route.ComponentProps) {
                   <th>Groups</th>
                   <th>Invited By</th>
                   <th>Expires</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {pendingInvites.map((inv) => (
-                  <tr key={inv.id}>
-                    <td>{inv.email}</td>
-                    <td>{JSON.parse(inv.groupNames).join(", ")}</td>
-                    <td>{inv.invitedBy}</td>
-                    <td>{new Date(inv.expiresAt + "Z").toLocaleDateString()}</td>
-                  </tr>
+                  <PendingInviteRow key={inv.id} invite={inv} />
                 ))}
               </tbody>
             </table>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* Users List */}
       <section className="card">
@@ -245,7 +294,46 @@ export default function UsersPage({ loaderData }: Route.ComponentProps) {
         .table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
         .table th { text-align: left; padding: 0.5rem 0.75rem; color: var(--color-text-muted); font-weight: 500; border-bottom: 1px solid var(--color-border); }
         .table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(51,51,51,0.5); }
+        .empty-state { color: var(--color-text-muted); font-size: 0.875rem; }
+        .action-btns { display: flex; gap: 0.5rem; }
+        .btn-ghost { padding: 0.25rem 0.625rem; font-size: 0.75rem; background: transparent; color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: var(--radius-sm); cursor: pointer; transition: all 150ms; }
+        .btn-ghost:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text-muted); }
+        .btn-ghost.danger:hover:not(:disabled) { color: #fca5a5; border-color: rgba(239,68,68,0.4); }
       `}</style>
     </main>
+  )
+}
+
+function PendingInviteRow({ invite }: { invite: Invite }) {
+  const revokeFetcher = useFetcher()
+  const resendFetcher = useFetcher()
+  const isRevoking = revokeFetcher.state !== "idle"
+  const isResending = resendFetcher.state !== "idle"
+
+  return (
+    <tr>
+      <td>{invite.email}</td>
+      <td>{JSON.parse(invite.groupNames).join(", ")}</td>
+      <td>{invite.invitedBy}</td>
+      <td>{new Date(invite.expiresAt + "Z").toLocaleDateString()}</td>
+      <td>
+        <div className="action-btns">
+          <resendFetcher.Form method="post">
+            <input type="hidden" name="intent" value="resend" />
+            <input type="hidden" name="inviteId" value={invite.id} />
+            <button type="submit" className="btn-ghost" disabled={isResending || isRevoking}>
+              {isResending ? "Resending..." : "Resend"}
+            </button>
+          </resendFetcher.Form>
+          <revokeFetcher.Form method="post">
+            <input type="hidden" name="intent" value="revoke" />
+            <input type="hidden" name="inviteId" value={invite.id} />
+            <button type="submit" className="btn-ghost danger" disabled={isRevoking || isResending}>
+              {isRevoking ? "Revoking..." : "Revoke"}
+            </button>
+          </revokeFetcher.Form>
+        </div>
+      </td>
+    </tr>
   )
 }
