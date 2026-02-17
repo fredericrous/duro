@@ -19,17 +19,21 @@ export async function loader({ request }: Route.LoaderArgs) {
     user: auth.user,
     groups: auth.groups,
     visibleApps,
+    isAdmin: auth.groups.includes("lldap_admin"),
   };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { user, visibleApps } = loaderData;
+  const { user, visibleApps, isAdmin } = loaderData;
 
   return (
     <main className="page">
       <header className="header">
         <h1 className="title">Duro</h1>
-        {user && <span className="user">Welcome, {user}</span>}
+        <div className="header-right">
+          {isAdmin && <a href="/users" className="admin-link">Users</a>}
+          {user && <span className="user">Welcome, {user}</span>}
+        </div>
       </header>
 
       {visibleApps.length > 0 ? (
@@ -57,6 +61,22 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         .title {
           font-size: 1.75rem;
           font-weight: 700;
+        }
+
+        .header-right {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .admin-link {
+          font-size: 0.8rem;
+          color: var(--color-text-muted);
+          transition: color var(--transition);
+        }
+
+        .admin-link:hover {
+          color: var(--color-accent);
         }
 
         .user {
